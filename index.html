@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SQL ↔ EzraQL</title>
+<style>
+  :root{
+    --bg:#0f1218;
+    --panel:#161b24;
+    --panel-2:#1b212c;
+    --line:#2a3242;
+    --text:#e6e9f0;
+    --dim:#8993a8;
+    --accent:#4fd1c5;
+    --accent-dim:#2c6b64;
+    --warn:#e8b04b;
+    --err:#e8615f;
+    --mono: 'SFMono-Regular', 'JetBrains Mono', Consolas, Menlo, monospace;
+    --sans: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+  }
+  header{
+    padding:22px 28px 16px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    flex-wrap:wrap;
+  }
+  header h1{
+    font-size:18px;
+    margin:0;
+    font-weight:600;
+    letter-spacing:0.2px;
+  }
+  header h1 .arrow{color:var(--accent); font-weight:400; margin:0 6px;}
+  header p{
+    margin:0;
+    color:var(--dim);
+    font-size:12.5px;
+  }
+  .direction-row{
+    padding:14px 28px 0;
+    display:flex;
+    justify-content:center;
+  }
+  .direction-toggle{
+    display:inline-flex;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:3px;
+    gap:2px;
+  }
+  .dir-btn{
+    background:none;
+    border:none;
+    color:var(--dim);
+    font-family:var(--mono);
+    font-size:12.5px;
+    padding:7px 14px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  .dir-btn.active{
+    background:var(--accent);
+    color:#08211e;
+    font-weight:600;
+  }
+  .presets{
+    padding:12px 28px 0;
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .preset-btn{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--dim);
+    font-size:12px;
+    padding:6px 12px;
+    border-radius:20px;
+    cursor:pointer;
+    font-family:var(--sans);
+    transition:border-color .15s, color .15s;
+  }
+  .preset-btn:hover{border-color:var(--accent-dim); color:var(--text);}
+
+  .pipeline{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:14px 28px 0;
+    flex-wrap:wrap;
+  }
+  .tag{
+    font-family:var(--mono);
+    font-size:10.5px;
+    color:var(--dim);
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    padding:3px 8px;
+    border-radius:4px;
+    white-space:nowrap;
+  }
+  .tag .to{color:var(--accent); margin:0 4px;}
+  .tag.active{border-color:var(--accent); color:var(--accent);}
+
+  main{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:1px;
+    background:var(--line);
+    margin:18px 28px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+    min-height:420px;
+  }
+  @media (max-width:880px){ main{grid-template-columns:1fr;} }
+
+  .pane{
+    background:var(--panel);
+    display:flex;
+    flex-direction:column;
+    min-height:420px;
+  }
+  .pane-head{
+    padding:10px 16px;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--dim);
+    border-bottom:1px solid var(--line);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  textarea{
+    flex:1;
+    background:transparent;
+    border:none;
+    outline:none;
+    resize:none;
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:13.5px;
+    line-height:1.55;
+    padding:16px;
+  }
+  pre#output{
+    flex:1;
+    margin:0;
+    padding:16px;
+    font-family:var(--mono);
+    font-size:13px;
+    line-height:1.55;
+    overflow:auto;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .jkey{color:#7fb3ff;}
+  .jstr{color:#a8e6a1;}
+  .jnum{color:#e8b04b;}
+  .jbool{color:#e8615f;}
+  .jfn{color:#c792ea; font-weight:600;}
+
+  .editor-wrap{
+    position:relative;
+    flex:1;
+    overflow:hidden;
+  }
+  .editor-wrap pre#inputHighlight{
+    position:absolute;
+    inset:0;
+    margin:0;
+    padding:16px;
+    font-family:var(--mono);
+    font-size:13.5px;
+    line-height:1.55;
+    white-space:pre-wrap;
+    word-break:break-word;
+    overflow:auto;
+    pointer-events:none;
+    color:var(--text);
+  }
+  .editor-wrap textarea#sqlInput{
+    position:absolute;
+    inset:0;
+    background:transparent;
+    border:none;
+    outline:none;
+    resize:none;
+    color:transparent;
+    caret-color:var(--text);
+    font-family:var(--mono);
+    font-size:13.5px;
+    line-height:1.55;
+    padding:16px;
+    white-space:pre-wrap;
+    word-break:break-word;
+    overflow:auto;
+  }
+
+  .actions{
+    display:flex;
+    gap:8px;
+    align-items:center;
+  }
+  button.run{
+    background:var(--accent);
+    color:#08211e;
+    border:none;
+    font-weight:600;
+    font-size:12.5px;
+    padding:6px 14px;
+    border-radius:6px;
+    cursor:pointer;
+    font-family:var(--sans);
+  }
+  button.run:hover{filter:brightness(1.08);}
+  button.icon-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--dim);
+    font-size:11px;
+    padding:5px 10px;
+    border-radius:6px;
+    cursor:pointer;
+    font-family:var(--sans);
+  }
+  button.icon-btn:hover{color:var(--text); border-color:var(--accent-dim);}
+
+  .notes{
+    margin:0 28px 28px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px 18px;
+  }
+  .notes h2{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--dim);
+    margin:0 0 10px;
+  }
+  .notes ul{margin:0; padding-left:18px;}
+  .notes li{
+    font-size:12.5px;
+    color:var(--warn);
+    margin-bottom:6px;
+    font-family:var(--mono);
+  }
+  .notes.empty li{color:var(--dim);}
+  .error-box{
+    color:var(--err);
+    font-family:var(--mono);
+    font-size:13px;
+    padding:16px;
+  }
+  .scope{
+    margin:0 28px 28px;
+    color:var(--dim);
+    font-size:11.5px;
+    font-family:var(--mono);
+    line-height:1.7;
+  }
+  .scope b{color:var(--text); font-family:var(--sans); font-weight:600;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SQL <span class="arrow">↔</span> EzraQL</h1>
+  <p id="subtitle">Paste a SELECT statement, get the EzraQL JSON your CRM expects.</p>
+</header>
+
+<div class="direction-row">
+  <div class="direction-toggle">
+    <button class="dir-btn active" id="dirSqlToEzra">SQL → EzraQL</button>
+    <button class="dir-btn" id="dirEzraToSql">EzraQL → SQL</button>
+  </div>
+</div>
+
+<div class="presets" id="presetsBar">
+  <button class="preset-btn" data-preset="0">Simple filter (Filter)</button>
+  <button class="preset-btn" data-preset="1">Join (Filter)</button>
+  <button class="preset-btn" data-preset="2">Join + Aggregates + GroupsBy</button>
+</div>
+
+<div class="pipeline" id="pipeline">
+  <span class="tag">SELECT<span class="to">→</span>ReturnColumns / Aggregates</span>
+  <span class="tag">FROM<span class="to">→</span>FromEntity</span>
+  <span class="tag">JOIN..ON<span class="to">→</span>Join / JoinOn</span>
+  <span class="tag">WHERE<span class="to">→</span>Filter</span>
+  <span class="tag">GROUP BY<span class="to">→</span>GroupsBy</span>
+  <span class="tag">ORDER BY<span class="to">→</span>OrderBy</span>
+  <span class="tag">LIMIT<span class="to">→</span>PageSize</span>
+</div>
+
+<main>
+  <div class="pane">
+    <div class="pane-head">
+      <span id="inputLabel">SQL</span>
+      <div class="actions"><button class="run" id="convertBtn">Convert →</button></div>
+    </div>
+    <div class="editor-wrap">
+      <pre id="inputHighlight" aria-hidden="true"></pre>
+      <textarea id="sqlInput" spellcheck="false"></textarea>
+    </div>
+  </div>
+  <div class="pane">
+    <div class="pane-head">
+      <span id="outputLabel">EzraQL JSON</span>
+      <div class="actions"><button class="icon-btn" id="copyBtn">Copy</button></div>
+    </div>
+    <pre id="output"></pre>
+  </div>
+</main>
+
+<div class="notes empty" id="notesBox">
+  <h2>Conversion notes</h2>
+  <ul id="notesList"><li>Notes and assumptions made during conversion will show up here.</li></ul>
+</div>
+
+<div class="scope">
+  <b>Current scope:</b> single SELECT statement, no subqueries · operators =, !=, &lt;&gt;, &gt;, &lt;, &gt;=, &lt;= (mapped to Eq/Neq/Gt/Lt/Gte/Lte) ·
+  WHERE/ON support flat AND-only or OR-only lists (no nested "A AND (B OR C)" groups) ·
+  SUM/AVG/COUNT detected as native aggregates when wrapping a single column, everything else (MIN/MAX, expressions) becomes a CUSTOM aggregate with the raw formula passed through ·
+  GroupsBy is inferred from non-aggregate SELECT columns when GROUP BY is omitted · LIMIT n [OFFSET m] maps to PageSize/CurrentPage.
+  Tell me if any of these assumptions are wrong and I'll adjust the mapping rules.
+</div>
+
+<script>
+/* ============ Parser (tested against the three provided templates) ============ */
+function tokenize(str) {
+  const tokens = [];
+  let i = 0;
+  while (i < str.length) {
+    const c = str[i];
+    if (c === "'" || c === '"') {
+      // SQL escapes an embedded quote by doubling it (e.g. 'O''Brien' -> O'Brien).
+      // Scan past doubled quotes instead of stopping at the first match, and
+      // build the unescaped value (single quote, not the doubled pair) so it
+      // carries correctly into the EzraQL JSON.
+      let j = i + 1;
+      let value = '';
+      while (j < str.length) {
+        if (str[j] === c) {
+          if (str[j + 1] === c) { value += c; j += 2; continue; }
+          break;
+        }
+        if (str[j] === '\\') { value += str[j + 1]; j += 2; continue; }
+        value += str[j]; j++;
+      }
+      tokens.push({ type: 'string', raw: str.slice(i, j + 1), value: value });
+      i = j + 1;
+    } else if (c === '(') { tokens.push({ type: 'lparen', raw: '(' }); i++; }
+    else if (c === ')') { tokens.push({ type: 'rparen', raw: ')' }); i++; }
+    else if (/\s/.test(c)) { let j=i; while (j<str.length && /\s/.test(str[j])) j++; tokens.push({type:'space', raw:str.slice(i,j)}); i=j; }
+    else if (/[A-Za-z0-9_.@#]/.test(c)) { let j=i; while (j<str.length && /[A-Za-z0-9_.@#]/.test(str[j])) j++; tokens.push({type:'word', raw:str.slice(i,j)}); i=j; }
+    else if (c === ',') { tokens.push({type:'comma', raw:','}); i++; }
+    else if (/[=<>!]/.test(c)) { let j=i; while (j<str.length && /[=<>!]/.test(str[j])) j++; tokens.push({type:'op', raw:str.slice(i,j)}); i=j; }
+    else { tokens.push({type:'other', raw:c}); i++; }
+  }
+  return tokens;
+}
+function raw(tokens){ return tokens.map(t=>t.raw).join(''); }
+function trimTokens(tokens){
+  let s=0,e=tokens.length;
+  while(s<e && tokens[s].type==='space') s++;
+  while(e>s && tokens[e-1].type==='space') e--;
+  return tokens.slice(s,e);
+}
+function splitTopLevel(tokens, isDelim){
+  const parts=[]; let depth=0; let cur=[];
+  for(let idx=0; idx<tokens.length; idx++){
+    const t=tokens[idx];
+    if(t.type==='lparen') depth++;
+    if(t.type==='rparen') depth--;
+    if(depth===0 && isDelim(tokens, idx)){ parts.push(cur); cur=[]; continue; }
+    cur.push(t);
+  }
+  parts.push(cur);
+  return parts.map(trimTokens);
+}
+function wordAt(tokens, idx){ return tokens[idx] && tokens[idx].type==='word' ? tokens[idx].raw.toUpperCase() : null; }
+function findTopLevelKeyword(tokens, words, startIdx=0){
+  let depth=0;
+  for(let i=startIdx;i<tokens.length;i++){
+    const t=tokens[i];
+    if(t.type==='lparen') depth++;
+    if(t.type==='rparen') depth--;
+    if(depth!==0) continue;
+    if(wordAt(tokens,i)===words[0]){
+      let j=i, matched=true, wi=0;
+      while(wi<words.length){
+        while(tokens[j] && tokens[j].type==='space') j++;
+        if(wordAt(tokens,j)!==words[wi]){matched=false;break;}
+        j++; wi++;
+      }
+      if(matched) return {start:i, end:j};
+    }
+  }
+  return null;
+}
+const JOIN_KEYWORDS = [['LEFT','OUTER','JOIN'],['RIGHT','OUTER','JOIN'],['LEFT','JOIN'],['RIGHT','JOIN'],['INNER','JOIN'],['JOIN']];
+function findAllJoins(tokens){
+  const joins=[]; let searchFrom=0;
+  while(true){
+    let best=null;
+    for(const kw of JOIN_KEYWORDS){
+      const found = findTopLevelKeyword(tokens, kw, searchFrom);
+      if(found && (!best || found.start<best.start)) best=found;
+    }
+    if(!best) break;
+    joins.push(best);
+    searchFrom = best.end;
+  }
+  return joins;
+}
+const OPERATOR_MAP = {'=':'Eq','==':'Eq','!=':'Neq','<>':'Neq','>':'Gt','<':'Lt','>=':'Gte','<=':'Lte'};
+function splitAliasColumn(name){
+  const parts = name.split('.');
+  if(parts.length===2) return {alias:parts[0], column:parts[1]};
+  return {alias:null, column:name};
+}
+function parseCondition(tokens, notes){
+  const t = trimTokens(tokens);
+  const opIdx = t.findIndex(tok=>tok.type==='op');
+  if(opIdx===-1){ notes.push('Could not find an operator in condition "'+raw(t)+'" — skipped.'); return null; }
+  const lhsTokens = trimTokens(t.slice(0,opIdx));
+  const rhsTokens = trimTokens(t.slice(opIdx+1));
+  const opRaw = t[opIdx].raw;
+  const operator = OPERATOR_MAP[opRaw];
+  if(!operator) notes.push('Unsupported operator "'+opRaw+'" in "'+raw(t)+'" — defaulted to Eq.');
+  const lhsName = raw(lhsTokens);
+  const {alias:lAlias, column:lCol} = splitAliasColumn(lhsName);
+  const rhsRaw = raw(rhsTokens).trim();
+  let result = {column:lCol, alias:lAlias, operator: operator||'Eq'};
+  if(rhsTokens.length===1 && rhsTokens[0].type==='string'){ result.value = rhsTokens[0].value; }
+  else if(rhsTokens.length===1 && /^-?\d+(\.\d+)?$/.test(rhsRaw)){ result.value = Number(rhsRaw); }
+  else if(/^true$/i.test(rhsRaw) || /^false$/i.test(rhsRaw)){ result.value = /^true$/i.test(rhsRaw); }
+  else if(rhsRaw.startsWith('@')){ result.toColumnLiteral = rhsRaw; }
+  else if(rhsRaw.includes('.')){ const {alias:rAlias, column:rCol} = splitAliasColumn(rhsRaw); result.toAlias=rAlias; result.toColumn=rCol; }
+  else { result.toColumn = rhsRaw; }
+  return result;
+}
+function splitAndOr(tokens){
+  const isAnd=(toks,idx)=>wordAt(toks,idx)==='AND';
+  const isOr=(toks,idx)=>wordAt(toks,idx)==='OR';
+  const hasAnd = tokens.some((_,idx)=>isAnd(tokens,idx));
+  const hasOr = tokens.some((_,idx)=>isOr(tokens,idx));
+  if(hasAnd && hasOr) return {mixed:true, parts: splitTopLevel(tokens,(t,i)=>isAnd(t,i)||isOr(t,i))};
+  else if(hasOr) return {type:'Or', parts: splitTopLevel(tokens,isOr)};
+  else return {type:'And', parts: splitTopLevel(tokens,isAnd)};
+}
+function convertSqlToEzraQL(sql, defaults={}){
+  const notes=[];
+  const cleaned = sql.trim().replace(/;\s*$/,'');
+  const tokens = tokenize(cleaned);
+  const selectKw = findTopLevelKeyword(tokens,['SELECT']);
+  const fromKw = findTopLevelKeyword(tokens,['FROM']);
+  if(!selectKw || !fromKw) throw new Error('Could not find SELECT / FROM — only single SELECT statements are supported (no subqueries).');
+  const joins = findAllJoins(tokens);
+  const whereKw = findTopLevelKeyword(tokens,['WHERE']);
+  const groupByKw = findTopLevelKeyword(tokens,['GROUP','BY']);
+  const orderByKw = findTopLevelKeyword(tokens,['ORDER','BY']);
+  const limitKw = findTopLevelKeyword(tokens,['LIMIT']);
+  const boundaries = [fromKw.end, ...joins.map(j=>j.start), ...joins.map(j=>j.end),
+    whereKw&&whereKw.start, groupByKw&&groupByKw.start, orderByKw&&orderByKw.start, limitKw&&limitKw.start, tokens.length]
+    .filter(x=>x!==null && x!==undefined);
+  function nextBoundaryAfter(pos){ const c = boundaries.filter(b=>b>pos); return c.length?Math.min(...c):tokens.length; }
+
+  let selectTokens = trimTokens(tokens.slice(selectKw.end, fromKw.start));
+  let distinct=false;
+  if(wordAt(selectTokens,0)==='DISTINCT'){ distinct=true; selectTokens = trimTokens(selectTokens.slice(1)); }
+  const selectItems = splitTopLevel(selectTokens, (t,i)=>t[i].type==='comma');
+
+  const fromEnd = joins.length ? joins[0].start : nextBoundaryAfter(fromKw.end);
+  const fromTokens = trimTokens(tokens.slice(fromKw.end, fromEnd));
+  let fromEntity, fromAliase=null;
+  {
+    const r1 = raw(trimTokens(fromTokens)).trim().split(/\s+/);
+    fromEntity = r1[0];
+    if(r1[1] && r1[1].toUpperCase()==='AS') fromAliase = r1[2];
+    else if(r1[1]) fromAliase = r1[1];
+  }
+  const hasJoins = joins.length>0;
+
+  const joinResults=[];
+  for(let ji=0; ji<joins.length; ji++){
+    const j = joins[ji];
+    const joinBodyEnd = joins[ji+1] ? joins[ji+1].start : (whereKw?whereKw.start:(groupByKw?groupByKw.start:(orderByKw?orderByKw.start:(limitKw?limitKw.start:tokens.length))));
+    const joinBody = tokens.slice(j.end, joinBodyEnd);
+    const onKw = findTopLevelKeyword(joinBody, ['ON']);
+    if(!onKw){ notes.push('JOIN clause missing ON condition — skipped: "'+raw(trimTokens(joinBody))+'"'); continue; }
+    const tableTokens = trimTokens(joinBody.slice(0, onKw.start));
+    const r2 = raw(tableTokens).trim().split(/\s+/);
+    const joinToEntity = r2[0];
+    let joinToAliase=null;
+    if(r2[1] && r2[1].toUpperCase()==='AS') joinToAliase = r2[2];
+    else if(r2[1]) joinToAliase = r2[1];
+    const onTokens = trimTokens(joinBody.slice(onKw.end));
+    const andOr = splitAndOr(onTokens);
+    if(andOr.mixed) notes.push('JOIN ON clause for '+joinToEntity+' mixes AND/OR — only flat lists are supported, treated as AND.');
+    const criteria = andOr.parts.map(p=>parseCondition(p,notes)).filter(Boolean).map(c=>{
+      const entry = {FromAliase: c.alias||fromAliase, FromColumn: c.column, Operator: c.operator};
+      if(c.value!==undefined) entry.Value = c.value;
+      else if(c.toColumnLiteral) entry.ToColumn = c.toColumnLiteral;
+      else if(c.toColumn) entry.ToColumn = c.toColumn;
+      return entry;
+    });
+    joinResults.push({JoinToEntity:joinToEntity, JoinToEntityAliase:joinToAliase, aliasKey:joinToAliase,
+      JoinOn:{CriteriaType: andOr.mixed?'And':andOr.type, Criteria:criteria}, ReturnColumns:[], Beautify:[]});
+  }
+  const joinAliasSet = new Set(joinResults.map(j=>j.aliasKey));
+
+  const baseReturnColumns=[]; const baseBeautify=[]; const aggregates=[];
+  const AGG_FN_RE = /^(SUM|AVG|COUNT|MIN|MAX)\s*\(/i;
+  for(const item of selectItems){
+    if(!item.length) continue;
+    const asIdx = (()=>{ let depth=0; for(let i=0;i<item.length;i++){ if(item[i].type==='lparen') depth++; if(item[i].type==='rparen') depth--; if(depth===0 && wordAt(item,i)==='AS') return i; } return -1; })();
+    let exprTokens = asIdx===-1 ? item : trimTokens(item.slice(0,asIdx));
+    let aliasTokens = asIdx===-1 ? null : trimTokens(item.slice(asIdx+1));
+    let asAlias = aliasTokens ? raw(aliasTokens).replace(/^["']|["']$/g,'') : null;
+    const exprRaw = raw(exprTokens).trim();
+    const aggMatch = exprRaw.match(AGG_FN_RE);
+    if(aggMatch){
+      const fn = aggMatch[1].toUpperCase();
+      const inner = exprRaw.slice(exprRaw.indexOf('(')+1, exprRaw.lastIndexOf(')')).trim();
+      const simpleColMatch = inner.match(/^([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)$/);
+      if((fn==='SUM'||fn==='AVG'||fn==='COUNT') && simpleColMatch){
+        aggregates.push({Aggregate:fn, Aliase:simpleColMatch[1], Col:simpleColMatch[2], As: asAlias || (fn+' '+inner)});
+      } else {
+        aggregates.push({Aggregate:'CUSTOM', Formular:exprRaw, As: asAlias || exprRaw});
+        if(fn!=='SUM' && fn!=='AVG' && fn!=='COUNT') notes.push('"'+fn+'" is not one of SUM/AVG/COUNT in the templates — emitted as CUSTOM with Formular "'+exprRaw+'". Verify this is right for EzraQL.');
+      }
+      continue;
+    }
+    const {alias, column} = splitAliasColumn(exprRaw);
+    const targetJoin = alias && joinAliasSet.has(alias) ? joinResults.find(j=>j.aliasKey===alias) : null;
+    if(targetJoin){ targetJoin.ReturnColumns.push(column); if(asAlias) targetJoin.Beautify.push({ColName:column, Display:asAlias}); }
+    else { baseReturnColumns.push(column); if(asAlias) baseBeautify.push({ColName:column, Display:asAlias}); }
+  }
+
+  let filterBlock=null;
+  if(whereKw){
+    const whereEnd = nextBoundaryAfter(whereKw.end-1)===whereKw.end ? nextBoundaryAfter(whereKw.end) : nextBoundaryAfter(whereKw.end-1);
+    const whereTokens = trimTokens(tokens.slice(whereKw.end, whereEnd));
+    const andOr = splitAndOr(whereTokens);
+    if(andOr.mixed) notes.push('WHERE clause mixes AND/OR — only flat lists are supported (per your confirmation), treated as AND. Nested groups will need manual adjustment.');
+    const conditions = andOr.parts.map(p=>parseCondition(p,notes)).filter(Boolean).map(c=>{
+      const entry={};
+      if(c.alias) entry.Aliase=c.alias;
+      entry.Column=c.column; entry.Operator=c.operator;
+      if(c.value!==undefined) entry.Value=c.value;
+      else if(c.toAlias){ entry.ToAliase=c.toAlias; entry.ToColumn=c.toColumn; }
+      else if(c.toColumn) entry.ToColumn=c.toColumn;
+      return entry;
+    });
+    filterBlock = {CriteriaType: andOr.mixed?'And':andOr.type, Conditions:conditions};
+  }
+
+  let groupsBy=null;
+  if(groupByKw){
+    const gEnd = nextBoundaryAfter(groupByKw.end-1)===groupByKw.end ? nextBoundaryAfter(groupByKw.end) : nextBoundaryAfter(groupByKw.end-1);
+    const gTokens = trimTokens(tokens.slice(groupByKw.end, gEnd));
+    const items = splitTopLevel(gTokens,(t,i)=>t[i].type==='comma').map(t=>raw(t).trim());
+    const byAlias={};
+    for(const it of items){ const {alias,column}=splitAliasColumn(it); const key=alias||fromAliase||'__base__'; byAlias[key]=byAlias[key]||[]; byAlias[key].push(column); }
+    groupsBy = Object.keys(byAlias).map(k=>({GroupByAliase: k==='__base__'?(fromAliase||fromEntity):k, GroupByCols: byAlias[k]}));
+  } else if(aggregates.length){
+    notes.push('Aggregates present but no GROUP BY in the SQL — GroupsBy was inferred from the non-aggregate SELECT columns.');
+    const byAlias={};
+    if(baseReturnColumns.length) byAlias[fromAliase||fromEntity]=baseReturnColumns.slice();
+    for(const j of joinResults){ if(j.ReturnColumns.length) byAlias[j.JoinToEntityAliase]=j.ReturnColumns.slice(); }
+    groupsBy = Object.keys(byAlias).map(k=>({GroupByAliase:k, GroupByCols:byAlias[k]}));
+  }
+
+  let orderBy=null;
+  if(orderByKw){
+    const oEnd = nextBoundaryAfter(orderByKw.end-1)===orderByKw.end ? nextBoundaryAfter(orderByKw.end) : nextBoundaryAfter(orderByKw.end-1);
+    const oTokens = trimTokens(tokens.slice(orderByKw.end, oEnd));
+    const items = splitTopLevel(oTokens,(t,i)=>t[i].type==='comma');
+    orderBy = items.map(it=>{
+      const words = raw(it).trim().split(/\s+/);
+      let direction='Asc'; let colWords=words;
+      if(words.length>1 && /^(ASC|DESC)$/i.test(words[words.length-1])){ direction = words[words.length-1].toUpperCase()==='DESC'?'Desc':'Asc'; colWords = words.slice(0,-1); }
+      const {column} = splitAliasColumn(colWords.join(''));
+      return {Column:column, Direction:direction};
+    });
+  }
+
+  let pageSize = defaults.pageSize ?? 100;
+  let currentPage = defaults.currentPage ?? 1;
+  if(limitKw){
+    const lEnd = nextBoundaryAfter(limitKw.end-1)===limitKw.end ? nextBoundaryAfter(limitKw.end) : nextBoundaryAfter(limitKw.end-1);
+    const lTokens = trimTokens(tokens.slice(limitKw.end, lEnd));
+    const lRaw = raw(lTokens).trim();
+    const offsetMatch = lRaw.match(/(\d+)\s+OFFSET\s+(\d+)/i);
+    if(offsetMatch){ pageSize = Number(offsetMatch[1]); currentPage = Math.floor(Number(offsetMatch[2])/pageSize)+1; }
+    else { const n = lRaw.match(/\d+/); if(n) pageSize = Number(n[0]); }
+  } else {
+    notes.push('No LIMIT in SQL — defaulted PageSize to '+pageSize+', CurrentPage to '+currentPage+'.');
+  }
+
+  const result = {FromEntity: fromEntity};
+  if(fromAliase && (hasJoins || aggregates.length)) result.FromAliase = fromAliase;
+  result.PageSize = pageSize;
+  result.CurrentPage = currentPage;
+  if(distinct) result.Distinct = true;
+  if(baseReturnColumns.length) result.ReturnColumns = baseReturnColumns;
+  if(baseBeautify.length) result.Beautify = baseBeautify;
+  if(aggregates.length) result.Aggregates = aggregates;
+  if(joinResults.length){
+    result.Join = joinResults.map(j=>{
+      const out = {JoinToEntity:j.JoinToEntity, JoinToEntityAliase:j.JoinToEntityAliase};
+      if(j.ReturnColumns.length) out.ReturnColumns = j.ReturnColumns;
+      if(j.Beautify.length) out.Beautify = j.Beautify;
+      out.JoinOn = j.JoinOn;
+      return out;
+    });
+  }
+  if(groupsBy) result.GroupsBy = groupsBy;
+  if(filterBlock) result.Filter = filterBlock;
+  if(orderBy) result.OrderBy = orderBy;
+  return {ezraql: result, notes};
+}
+
+/* ============ Reverse: EzraQL JSON -> SQL ============ */
+const OP_REV = { Eq: '=', Neq: '!=', Gt: '>', Lt: '<', Gte: '>=', Lte: '<=' };
+function opText(op, notes) {
+  const t = OP_REV[op];
+  if (!t) { notes.push('Unknown operator "'+op+'" — defaulted to "=".'); return '='; }
+  return t;
+}
+function fmtValue(v) {
+  if (v === null || v === undefined) return 'NULL';
+  if (typeof v === 'string') {
+    if (v.startsWith('@')) return v;
+    return "'" + v.replace(/'/g, "''") + "'";
+  }
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  return String(v);
+}
+function qualify(alias, col) { return alias ? alias + '.' + col : col; }
+function beautifyMap(list) {
+  const m = {};
+  (list || []).forEach(function(b){ m[b.ColName] = b.Display; });
+  return m;
+}
+function ezraqlToSql(ezra) {
+  const notes = [];
+  if (!ezra || typeof ezra !== 'object' || Array.isArray(ezra)) throw new Error('Input is not a JSON object.');
+  if (!ezra.FromEntity) throw new Error('Missing "FromEntity" — cannot determine the table to select from.');
+
+  const baseAlias = ezra.FromAliase || null;
+
+  const selectParts = [];
+  const baseBeautify = beautifyMap(ezra.Beautify);
+  (ezra.ReturnColumns || []).forEach(function(col){
+    const disp = baseBeautify[col];
+    let piece = qualify(baseAlias, col);
+    if (disp) piece += ' AS "' + disp + '"';
+    selectParts.push(piece);
+  });
+  (ezra.Join || []).forEach(function(j){
+    const jBeautify = beautifyMap(j.Beautify);
+    (j.ReturnColumns || []).forEach(function(col){
+      const disp = jBeautify[col];
+      let piece = qualify(j.JoinToEntityAliase, col);
+      if (disp) piece += ' AS "' + disp + '"';
+      selectParts.push(piece);
+    });
+  });
+  (ezra.Aggregates || []).forEach(function(a){
+    if (a.Aggregate === 'CUSTOM') {
+      if (!a.Formular) { notes.push('A CUSTOM aggregate is missing "Formular" — skipped.'); return; }
+      selectParts.push(a.Formular + ' AS "' + (a.As || '') + '"');
+    } else if (a.Aggregate) {
+      selectParts.push(a.Aggregate + '(' + qualify(a.Aliase, a.Col) + ') AS "' + (a.As || '') + '"');
+    }
+  });
+  if (!selectParts.length) { notes.push('No ReturnColumns or Aggregates found — used SELECT *.'); selectParts.push('*'); }
+
+  let sql = 'SELECT ';
+  if (ezra.Distinct) sql += 'DISTINCT ';
+  sql += selectParts.join(',\n       ');
+  sql += '\nFROM ' + ezra.FromEntity + (baseAlias ? ' ' + baseAlias : '');
+
+  (ezra.Join || []).forEach(function(j){
+    if (!j.JoinToEntity) { notes.push('A Join entry is missing "JoinToEntity" — skipped.'); return; }
+    const onBlock = j.JoinOn || {};
+    const connector = onBlock.CriteriaType === 'Or' ? 'OR' : 'AND';
+    const conds = (onBlock.Criteria || []).map(function(c){
+      const left = qualify(c.FromAliase || baseAlias, c.FromColumn);
+      const op = opText(c.Operator, notes);
+      let right;
+      if (c.Value !== undefined) right = fmtValue(c.Value);
+      else if (c.ToColumn !== undefined) {
+        right = String(c.ToColumn).startsWith('@') ? c.ToColumn : qualify(j.JoinToEntityAliase, c.ToColumn);
+      } else { right = 'NULL'; notes.push('JoinOn condition on ' + j.JoinToEntity + ' is missing Value/ToColumn — used NULL.'); }
+      return left + ' ' + op + ' ' + right;
+    });
+    sql += '\nJOIN ' + j.JoinToEntity + (j.JoinToEntityAliase ? ' ' + j.JoinToEntityAliase : '') +
+      (conds.length ? ' ON ' + conds.join(' ' + connector + ' ') : '');
+  });
+
+  const filter = ezra.Filter || ezra.Criteria;
+  if (filter) {
+    const connector = filter.CriteriaType === 'Or' ? 'OR' : 'AND';
+    const conds = (filter.Conditions || []).map(function(c){
+      const left = qualify(c.Aliase, c.Column);
+      const op = opText(c.Operator, notes);
+      let right;
+      if (c.Value !== undefined) right = fmtValue(c.Value);
+      else if (c.ToColumn !== undefined) right = qualify(c.ToAliase, c.ToColumn);
+      else { right = 'NULL'; notes.push('Condition on "' + c.Column + '" is missing Value/ToColumn — used NULL.'); }
+      return left + ' ' + op + ' ' + right;
+    });
+    if (conds.length) sql += '\nWHERE ' + conds.join(' ' + connector + ' ');
+  }
+
+  if (Array.isArray(ezra.GroupsBy) && ezra.GroupsBy.length) {
+    const cols = [];
+    ezra.GroupsBy.forEach(function(g){ (g.GroupByCols || []).forEach(function(c){ cols.push(qualify(g.GroupByAliase, c)); }); });
+    if (cols.length) sql += '\nGROUP BY ' + cols.join(', ');
+  }
+
+  if (Array.isArray(ezra.OrderBy) && ezra.OrderBy.length) {
+    const parts = ezra.OrderBy.map(function(o){ return o.Column + ' ' + (o.Direction === 'Desc' ? 'DESC' : 'ASC'); });
+    sql += '\nORDER BY ' + parts.join(', ');
+  }
+
+  const pageSize = ezra.PageSize;
+  const currentPage = ezra.CurrentPage || 1;
+  if (pageSize) {
+    sql += '\nLIMIT ' + pageSize;
+    if (currentPage > 1) sql += ' OFFSET ' + ((currentPage - 1) * pageSize);
+  } else {
+    notes.push('No PageSize present — LIMIT omitted.');
+  }
+
+  return { sql: sql + ';', notes: notes };
+}
+
+/* ============ UI wiring ============ */
+const SQL_PRESETS = [
+`SELECT DISTINCT CustomerId AS "Customer Unique Number", Name, CustomerStatus AS "Customer Status", CreatedOn, CreatedBy
+FROM Customer
+WHERE Name = 'Ezra360' AND Name = 'Ezra360'
+ORDER BY Name ASC, CreatedOn DESC
+LIMIT 100`,
+`SELECT C.CustomerId AS "Customer Unique Number", C.Name, C.CustomerStatus AS "Customer Status", C.CreatedOn, C.CreatedBy,
+CS.SalesOrderId, CS.Name, CS.StatusId, CS.TransactionDate, CS.TotalIncl
+FROM Customer C
+JOIN SalesOrder CS ON C.CustomerId = @CustomerId AND C.IsActive = true
+WHERE C.Name = 'Ezra360' AND SO.CountryId = C.CountryId AND Name = 'Ezra360'
+ORDER BY Name ASC, CreatedOn DESC
+LIMIT 100`,
+`SELECT C.CountryId, C.CustomerType,
+SUM(SO.TotalIncl) AS "Total Inclusive",
+AVG(SO.TotalIncl) AS "Average Sales",
+COUNT(SO.CustomerId) AS "# of Sales",
+SUM(SO.TotalIncl - SO.SubTotal) AS "VAT Total"
+FROM Customer C
+JOIN SalesOrder CS ON C.CustomerId = @CustomerId AND C.IsActive = true
+WHERE C.Name = 'Ezra360' AND SO.CountryId = C.CountryId AND Name = 'Ezra360'
+GROUP BY C.CountryId, C.CustomerType, SO.TransactionTypeId, SO.StatusId
+ORDER BY Name ASC, CreatedOn DESC
+LIMIT 100`
+];
+const PRESET_LABELS = ['Simple filter (Filter)', 'Join (Filter)', 'Join + Aggregates + GroupsBy'];
+const EZRA_PRESETS = SQL_PRESETS.map(function(sql){ return JSON.stringify(convertSqlToEzraQL(sql).ezraql, null, 2); });
+
+const PIPELINE_TAGS = [
+  ['SELECT', 'ReturnColumns / Aggregates'],
+  ['FROM', 'FromEntity'],
+  ['JOIN..ON', 'Join / JoinOn'],
+  ['WHERE', 'Filter'],
+  ['GROUP BY', 'GroupsBy'],
+  ['ORDER BY', 'OrderBy'],
+  ['LIMIT', 'PageSize']
+];
+
+const sqlInput = document.getElementById('sqlInput');
+const output = document.getElementById('output');
+const notesList = document.getElementById('notesList');
+const notesBox = document.getElementById('notesBox');
+const inputLabel = document.getElementById('inputLabel');
+const outputLabel = document.getElementById('outputLabel');
+const presetsBar = document.getElementById('presetsBar');
+const pipeline = document.getElementById('pipeline');
+
+const inputHighlight = document.getElementById('inputHighlight');
+let direction = 'sql2ezra'; // or 'ezra2sql'
+let savedSql = SQL_PRESETS[0];
+let savedEzra = EZRA_PRESETS[0];
+
+function jsonHighlight(json){
+  const esc = json.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc.replace(/("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?/g, function(match){
+    let cls = 'jnum';
+    if(/^"/.test(match)){ cls = /:$/.test(match) ? 'jkey' : 'jstr'; }
+    else if(/true|false/.test(match)){ cls = 'jbool'; }
+    return '<span class="'+cls+'">'+match+'</span>';
+  });
+}
+const SQL_KEYWORDS = /\b(SELECT|DISTINCT|FROM|JOIN|INNER|LEFT|RIGHT|OUTER|ON|WHERE|AND|OR|GROUP BY|ORDER BY|ASC|DESC|LIMIT|OFFSET|AS)\b/g;
+const SQL_FUNCTIONS = /\b(SUM|AVG|COUNT|MIN|MAX)\b(?=\s*\()/g;
+function sqlHighlight(sql){
+  const esc = sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Order matters: quote-highlighting runs first so later passes never re-scan
+  // the class="..." attributes an earlier pass just inserted (that self-collision
+  // is what corrupted the markup before). Functions before keywords so a function
+  // name never gets caught by a broader keyword pass.
+  let out = esc.replace(/('[^']*'|"[^"]*")/g, function(m){ return '<span class="jstr">'+m+'</span>'; });
+  out = out.replace(SQL_FUNCTIONS, function(m){ return '<span class="jfn">'+m+'</span>'; });
+  out = out.replace(SQL_KEYWORDS, function(m){ return '<span class="jkey">'+m+'</span>'; });
+  return out;
+}
+
+function updateInputHighlight(){
+  const text = sqlInput.value;
+  const html = direction === 'sql2ezra' ? sqlHighlight(text) : jsonHighlight(text);
+  inputHighlight.innerHTML = html + '\n';
+}
+sqlInput.addEventListener('scroll', function(){
+  inputHighlight.scrollTop = sqlInput.scrollTop;
+  inputHighlight.scrollLeft = sqlInput.scrollLeft;
+});
+
+function renderPipeline(){
+  pipeline.innerHTML = PIPELINE_TAGS.map(function(pair){
+    const left = direction === 'sql2ezra' ? pair[0] : pair[1];
+    const right = direction === 'sql2ezra' ? pair[1] : pair[0];
+    return '<span class="tag">'+left+'<span class="to">→</span>'+right+'</span>';
+  }).join('');
+}
+
+function renderPresets(){
+  presetsBar.innerHTML = PRESET_LABELS.map(function(label, i){
+    return '<button class="preset-btn" data-preset="'+i+'">'+label+'</button>';
+  }).join('');
+  Array.prototype.forEach.call(presetsBar.querySelectorAll('.preset-btn'), function(btn){
+    btn.addEventListener('click', function(){
+      const i = btn.dataset.preset;
+      if(direction === 'sql2ezra'){ sqlInput.value = SQL_PRESETS[i]; }
+      else { sqlInput.value = EZRA_PRESETS[i]; }
+      updateInputHighlight();
+      runConvert();
+    });
+  });
+}
+
+function setDirection(newDir){
+  // stash current textarea content under the outgoing direction
+  if(direction === 'sql2ezra') savedSql = sqlInput.value;
+  else savedEzra = sqlInput.value;
+
+  direction = newDir;
+  document.getElementById('dirSqlToEzra').classList.toggle('active', direction === 'sql2ezra');
+  document.getElementById('dirEzraToSql').classList.toggle('active', direction === 'ezra2sql');
+
+  if(direction === 'sql2ezra'){
+    inputLabel.textContent = 'SQL';
+    outputLabel.textContent = 'EzraQL JSON';
+    sqlInput.value = savedSql;
+  } else {
+    inputLabel.textContent = 'EzraQL JSON';
+    outputLabel.textContent = 'SQL';
+    sqlInput.value = savedEzra;
+  }
+  renderPipeline();
+  renderPresets();
+  updateInputHighlight();
+  runConvert();
+}
+
+function runConvert(){
+  const src = sqlInput.value.trim();
+  if(!src){
+    output.innerHTML='';
+    notesList.innerHTML = direction==='sql2ezra' ? '<li>Paste a SQL query and hit Convert.</li>' : '<li>Paste EzraQL JSON and hit Convert.</li>';
+    notesBox.classList.add('empty');
+    return;
+  }
+  try{
+    if(direction === 'sql2ezra'){
+      const { ezraql, notes } = convertSqlToEzraQL(src);
+      output.innerHTML = jsonHighlight(JSON.stringify(ezraql, null, 2));
+      applyNotes(notes);
+    } else {
+      let parsed;
+      try { parsed = JSON.parse(src); }
+      catch(parseErr){ throw new Error('That is not valid JSON: ' + parseErr.message); }
+      const { sql, notes } = ezraqlToSql(parsed);
+      output.innerHTML = sqlHighlight(sql);
+      applyNotes(notes);
+    }
+  }catch(e){
+    output.innerHTML = '<span class="error-box">'+e.message.replace(/</g,'&lt;')+'</span>';
+    notesBox.classList.add('empty');
+    notesList.innerHTML = '<li>Fix the error above and reconvert.</li>';
+  }
+}
+
+function applyNotes(notes){
+  if(notes.length){
+    notesBox.classList.remove('empty');
+    notesList.innerHTML = notes.map(function(n){ return '<li>'+n.replace(/</g,'&lt;')+'</li>'; }).join('');
+  } else {
+    notesBox.classList.add('empty');
+    notesList.innerHTML = '<li>No assumptions needed — clean mapping.</li>';
+  }
+}
+
+document.getElementById('convertBtn').addEventListener('click', runConvert);
+document.getElementById('copyBtn').addEventListener('click', function(){
+  navigator.clipboard.writeText(output.textContent);
+  const btn = document.getElementById('copyBtn');
+  const old = btn.textContent; btn.textContent='Copied'; setTimeout(function(){ btn.textContent=old; }, 1200);
+});
+document.getElementById('dirSqlToEzra').addEventListener('click', function(){ setDirection('sql2ezra'); });
+document.getElementById('dirEzraToSql').addEventListener('click', function(){ setDirection('ezra2sql'); });
+sqlInput.addEventListener('input', updateInputHighlight);
+
+renderPipeline();
+renderPresets();
+sqlInput.value = savedSql;
+updateInputHighlight();
+runConvert();
+</script>
+
+</body>
+</html>

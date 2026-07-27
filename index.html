@@ -300,7 +300,7 @@
 <div class="pipeline" id="pipeline">
   <span class="tag">SELECT<span class="to">→</span>ReturnColumns / Aggregates</span>
   <span class="tag">FROM<span class="to">→</span>FromEntity</span>
-  <span class="tag">JOIN..ON<span class="to">→</span>Join / JoinOn</span>
+  <span class="tag">JOIN..ON<span class="to">→</span>Joins / JoinOn</span>
   <span class="tag">WHERE<span class="to">→</span>Filter</span>
   <span class="tag">GROUP BY<span class="to">→</span>GroupsBy</span>
   <span class="tag">ORDER BY<span class="to">→</span>OrderBy</span>
@@ -514,14 +514,14 @@ function convertSqlToEzraQL(sql, defaults={}){
     const andOr = splitAndOr(onTokens);
     if(andOr.mixed) notes.push('JOIN ON clause for '+joinToEntity+' mixes AND/OR — only flat lists are supported, treated as AND.');
     const criteria = andOr.parts.map(p=>parseCondition(p,notes)).filter(Boolean).map(c=>{
-      const entry = {FromAliase: c.alias||fromAliase, FromColumn: c.column, Operator: c.operator};
+      const entry = {Aliase: c.alias||fromAliase, Column: c.column, Operator: c.operator};
       if(c.value!==undefined) entry.Value = c.value;
       else if(c.toColumnLiteral) entry.ToColumn = c.toColumnLiteral;
-      else if(c.toColumn) entry.ToColumn = c.toColumn;
+      else { entry.ToAliase = c.toAlias || joinToAliase; entry.ToColumn = c.toColumn; }
       return entry;
     });
     joinResults.push({JoinToEntity:joinToEntity, JoinToEntityAliase:joinToAliase, aliasKey:joinToAliase,
-      JoinOn:{CriteriaType: andOr.mixed?'And':andOr.type, Criteria:criteria}, ReturnColumns:[], Beautify:[]});
+      JoinOn:{CriteriaType: andOr.mixed?'And':andOr.type, Conditions:criteria}, ReturnColumns:[], Beautify:[]});
   }
   const joinAliasSet = new Set(joinResults.map(j=>j.aliasKey));
 
@@ -623,7 +623,7 @@ function convertSqlToEzraQL(sql, defaults={}){
   if(baseBeautify.length) result.Beautify = baseBeautify;
   if(aggregates.length) result.Aggregates = aggregates;
   if(joinResults.length){
-    result.Join = joinResults.map(j=>{
+    result.Joins = joinResults.map(j=>{
       const out = {JoinToEntity:j.JoinToEntity, JoinToEntityAliase:j.JoinToEntityAliase};
       if(j.ReturnColumns.length) out.ReturnColumns = j.ReturnColumns;
       if(j.Beautify.length) out.Beautify = j.Beautify;
@@ -674,7 +674,7 @@ function ezraqlToSql(ezra) {
     if (disp) piece += ' AS "' + disp + '"';
     selectParts.push(piece);
   });
-  (ezra.Join || []).forEach(function(j){
+  (ezra.Joins || []).forEach(function(j){
     const jBeautify = beautifyMap(j.Beautify);
     (j.ReturnColumns || []).forEach(function(col){
       const disp = jBeautify[col];
@@ -698,17 +698,17 @@ function ezraqlToSql(ezra) {
   sql += selectParts.join(',\n       ');
   sql += '\nFROM ' + ezra.FromEntity + (baseAlias ? ' ' + baseAlias : '');
 
-  (ezra.Join || []).forEach(function(j){
+  (ezra.Joins || []).forEach(function(j){
     if (!j.JoinToEntity) { notes.push('A Join entry is missing "JoinToEntity" — skipped.'); return; }
     const onBlock = j.JoinOn || {};
     const connector = onBlock.CriteriaType === 'Or' ? 'OR' : 'AND';
-    const conds = (onBlock.Criteria || []).map(function(c){
-      const left = qualify(c.FromAliase || baseAlias, c.FromColumn);
+    const conds = (onBlock.Conditions || []).map(function(c){
+      const left = qualify(c.Aliase || baseAlias, c.Column);
       const op = opText(c.Operator, notes);
       let right;
       if (c.Value !== undefined) right = fmtValue(c.Value);
       else if (c.ToColumn !== undefined) {
-        right = String(c.ToColumn).startsWith('@') ? c.ToColumn : qualify(j.JoinToEntityAliase, c.ToColumn);
+        right = String(c.ToColumn).startsWith('@') ? c.ToColumn : qualify(c.ToAliase || j.JoinToEntityAliase, c.ToColumn);
       } else { right = 'NULL'; notes.push('JoinOn condition on ' + j.JoinToEntity + ' is missing Value/ToColumn — used NULL.'); }
       return left + ' ' + op + ' ' + right;
     });
@@ -786,7 +786,7 @@ const EZRA_PRESETS = SQL_PRESETS.map(function(sql){ return JSON.stringify(conver
 const PIPELINE_TAGS = [
   ['SELECT', 'ReturnColumns / Aggregates'],
   ['FROM', 'FromEntity'],
-  ['JOIN..ON', 'Join / JoinOn'],
+  ['JOIN..ON', 'Joins / JoinOn'],
   ['WHERE', 'Filter'],
   ['GROUP BY', 'GroupsBy'],
   ['ORDER BY', 'OrderBy'],

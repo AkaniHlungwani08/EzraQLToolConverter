@@ -429,6 +429,7 @@ function findAllJoins(tokens){
   return joins;
 }
 const OPERATOR_MAP = {'=':'Eq','==':'Eq','!=':'Neq','<>':'Neq','>':'Gt','<':'Lt','>=':'Gte','<=':'Lte'};
+const MIRROR_OP = {Gt:'Lt', Lt:'Gt', Gte:'Lte', Lte:'Gte'};
 function splitAliasColumn(name){
   const parts = name.split('.');
   if(parts.length===2) return {alias:parts[0], column:parts[1]};
@@ -513,12 +514,19 @@ function convertSqlToEzraQL(sql, defaults={}){
     const onTokens = trimTokens(joinBody.slice(onKw.end));
     const andOr = splitAndOr(onTokens);
     if(andOr.mixed) notes.push('JOIN ON clause for '+joinToEntity+' mixes AND/OR — only flat lists are supported, treated as AND.');
+    // EzraQL puts the joined entity on the Aliase side and the entity it joins to on ToAliase,
+    // so column-to-column conditions written the other way round are swapped (operator mirrored).
     const criteria = andOr.parts.map(p=>parseCondition(p,notes)).filter(Boolean).map(c=>{
-      const entry = {Aliase: c.alias||fromAliase, Column: c.column, Operator: c.operator};
-      if(c.value!==undefined) entry.Value = c.value;
-      else if(c.toColumnLiteral) entry.ToColumn = c.toColumnLiteral;
-      else { entry.ToAliase = c.toAlias || joinToAliase; entry.ToColumn = c.toColumn; }
-      return entry;
+      if(c.value!==undefined || c.toColumnLiteral){
+        const entry = {Aliase: c.alias||joinToAliase, Column: c.column, Operator: c.operator};
+        if(c.value!==undefined) entry.Value = c.value; else entry.ToColumn = c.toColumnLiteral;
+        return entry;
+      }
+      const swap = (c.toAlias===joinToAliase && c.alias!==joinToAliase) || (c.alias && c.alias!==joinToAliase && !c.toAlias);
+      const l = swap ? {alias:c.toAlias, column:c.toColumn} : {alias:c.alias, column:c.column};
+      const r = swap ? {alias:c.alias, column:c.column} : {alias:c.toAlias, column:c.toColumn};
+      return {Aliase: l.alias||joinToAliase, Column: l.column, Operator: swap ? (MIRROR_OP[c.operator]||c.operator) : c.operator,
+        ToAliase: r.alias||fromAliase, ToColumn: r.column};
     });
     joinResults.push({JoinToEntity:joinToEntity, JoinToEntityAliase:joinToAliase, aliasKey:joinToAliase,
       JoinOn:{CriteriaType: andOr.mixed?'And':andOr.type, Conditions:criteria}, ReturnColumns:[], Beautify:[]});
@@ -549,8 +557,8 @@ function convertSqlToEzraQL(sql, defaults={}){
     }
     const {alias, column} = splitAliasColumn(exprRaw);
     const targetJoin = alias && joinAliasSet.has(alias) ? joinResults.find(j=>j.aliasKey===alias) : null;
-    if(targetJoin){ targetJoin.ReturnColumns.push(column); if(asAlias) targetJoin.Beautify.push({ColName:column, Display:asAlias}); }
-    else { baseReturnColumns.push(column); if(asAlias) baseBeautify.push({ColName:column, Display:asAlias}); }
+    if(targetJoin){ targetJoin.ReturnColumns.push(column); if(asAlias) targetJoin.Beautify.push({Column:column, Display:asAlias}); }
+    else { baseReturnColumns.push(column); if(asAlias) baseBeautify.push({Column:column, Display:asAlias}); }
   }
 
   let filterBlock=null;
@@ -656,7 +664,7 @@ function fmtValue(v) {
 function qualify(alias, col) { return alias ? alias + '.' + col : col; }
 function beautifyMap(list) {
   const m = {};
-  (list || []).forEach(function(b){ m[b.ColName] = b.Display; });
+  (list || []).forEach(function(b){ m[b.Column !== undefined ? b.Column : b.ColName] = b.Display; });
   return m;
 }
 function ezraqlToSql(ezra) {
@@ -703,12 +711,12 @@ function ezraqlToSql(ezra) {
     const onBlock = j.JoinOn || {};
     const connector = onBlock.CriteriaType === 'Or' ? 'OR' : 'AND';
     const conds = (onBlock.Conditions || []).map(function(c){
-      const left = qualify(c.Aliase || baseAlias, c.Column);
+      const left = qualify(c.Aliase || j.JoinToEntityAliase, c.Column);
       const op = opText(c.Operator, notes);
       let right;
       if (c.Value !== undefined) right = fmtValue(c.Value);
       else if (c.ToColumn !== undefined) {
-        right = String(c.ToColumn).startsWith('@') ? c.ToColumn : qualify(c.ToAliase || j.JoinToEntityAliase, c.ToColumn);
+        right = String(c.ToColumn).startsWith('@') ? c.ToColumn : qualify(c.ToAliase || baseAlias, c.ToColumn);
       } else { right = 'NULL'; notes.push('JoinOn condition on ' + j.JoinToEntity + ' is missing Value/ToColumn — used NULL.'); }
       return left + ' ' + op + ' ' + right;
     });
